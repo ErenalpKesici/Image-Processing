@@ -75,76 +75,9 @@ class _MyHomePageState extends State<MyHomePage> {
   final AssetImage angular = const AssetImage("assets/test.jpg");
   int max = 0, maxIdx = 0, curr = 0;
   List<Sector> sects = List.empty(growable: true);
-  final _transformationController = TransformationController();
-  TapDownDetails? _doubleTapDetails;
   Color color = Colors.transparent;
   File? _image;
   String labelObj = "", labelText = "", labelTextLan = "";
-  Future<List<Sector>> fillList(ImgDetails img) async{
-    for(int i = 0;i<img.width!;i++){
-      for(int j = 0;j<img.height!;j++){
-        int uniqueIdx = -1;
-        for(int k = 0;k<sects.length;k++){
-          if(img.pixelColorAt!(i, j) == sects[k].color){
-            uniqueIdx = k;
-            break;
-          }
-        }    
-        if(uniqueIdx == -1){
-          sects.add(Sector(img.pixelColorAt!(i, j), Point(x: i, y: j)));
-        }
-        else{
-          sects[uniqueIdx].addPoints(Point(x: i, y: j));
-        }
-      }
-    }    
-    return sects;
-  }
-  List<int> distinctify(List<int> list){
-    List<int> retList = List.empty(growable: true);
-    for(int i in list){
-      bool unique = true;
-      for(int j in retList){
-        if(i == j){
-          unique = false;
-          break;
-        }
-      }
-      if(unique){
-        retList.add(i);
-      }
-    }
-    return retList;
-  }
-  List<int> getMinMax(List<Point>? points){
-    int x = -1, y = -1, idxX = 0, idxY = 0;
-    List<int> indeces = List.empty(growable: true);
-    for(int i=0;i<points!.length;i++){
-      if(x == -1 || points[i].x! < x){
-        x = points[i].x!;
-        idxX = i;
-      }
-      if(y == -1 || points[i].y! < y){
-        y = points[i].y!;
-        idxY = i;
-      }
-    }
-    indeces.add(idxX);
-    indeces.add(idxY);
-    for(int i=0;i<points.length;i++){
-      if(x == -1 || points[i].x! > x){
-        x = points[i].x!;
-        idxX = i;
-      }
-      if(y == -1 || points[i].y! > y){
-        y = points[i].y!;
-        idxY = i;
-      }
-    }
-    indeces.add(idxX);
-    indeces.add(idxY);
-    return distinctify(indeces);
-  }
   Future getImage() async {
     final pickedFile = await picker.pickImage(source: ImageSource.gallery);
     setState(() {
@@ -160,77 +93,95 @@ class _MyHomePageState extends State<MyHomePage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(alt.toString()),
+        actions: [
+          ElevatedButton.icon(onPressed: () async {
+            await getImage();
+            setState(() {
+              labelText = "*";
+              labelTextLan = "*";
+              labelObj = "*";
+            });
+            final textLabeler = GoogleMlKit.vision.textDetector();
+            final imageLabeler = GoogleMlKit.vision.imageLabeler();
+            final languageLabeler = GoogleMlKit.nlp.languageIdentifier();
+            final inputImage = InputImage.fromFile(_image!);
+            final RecognisedText rt = await textLabeler.processImage(inputImage);
+            String rtLan = '';
+            if(rt.text != '') {
+              try{
+                rtLan = await languageLabeler.identifyLanguage(rt.text);
+              }catch(e){
+                print(e.toString());
+              }
+            }
+            final List<ImageLabel> labels = await imageLabeler.processImage(inputImage);
+            for(ImageLabel il in labels) print(il.label+" " + il.confidence.toString());
+            setState(() {
+              labelObj = labels[0].label;
+              labelText =  rt.text;
+              labelTextLan = rtLan;
+            });
+          }, icon: const Icon(Icons.filter), label: const Text('Pick an Image'),
+        ), 
+        ],
       ),
       body: SizedBox.expand(
         child: Center(
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                if(_image!=null)
-                  Image.file(_image!),
-                ElevatedButton.icon(onPressed: () async {
-                  await getImage();
-                  setState(() {
-                    labelText = "*";
-                    labelTextLan = "*";
-                    labelObj = "*";
-                  });
-                  final textLabeler = GoogleMlKit.vision.textDetector();
-                  final imageLabeler = GoogleMlKit.vision.imageLabeler();
-                  final languageLabeler = GoogleMlKit.nlp.languageIdentifier();
-                  final inputImage = InputImage.fromFile(_image!);
-                  final RecognisedText rt = await textLabeler.processImage(inputImage);
-                  String rtLan = '';
-                  if(rt.text != '') {
-                    rtLan = await languageLabeler.identifyLanguage(rt.text);
-                  }
-                  final List<ImageLabel> labels = await imageLabeler.processImage(inputImage);
-                  for(ImageLabel il in labels) print(il.label+" " + il.confidence.toString());
-                  setState(() {
-                    labelObj = labels[0].label;
-                    labelText =  rt.text;
-                    labelTextLan = rtLan;
-                  });
-                }, icon: Icon(Icons.filter), label: Text('Pick an Image'),
-              ), 
-              if(labelObj != "")
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.find_in_page),
-                    if(labelObj == "*")
-                      const CircularProgressIndicator()
-                    else
-                      Text(labelObj)
-                  ],
-                ),
-                if(labelTextLan != "")
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.language),
-                      if(labelTextLan == "*")
-                        const CircularProgressIndicator()
-                      else
-                        Text(labelTextLan, overflow: TextOverflow.ellipsis)
-                    ],
-                  ),
-                if(labelText != "")
-                  FittedBox(
-                    fit: BoxFit.scaleDown,
+          child: Scrollbar(
+            isAlwaysShown: true,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if(_image!=null)
+                    Image.file(_image!),
+                if(labelObj != "")
+                  Padding(
+                    padding: const EdgeInsets.all(8.0),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(Icons.text_fields),
-                        if(labelText == "*")
+                        const Icon(Icons.find_in_page),
+                        if(labelObj == "*")
                           const CircularProgressIndicator()
                         else
-                          Text(labelText, overflow: TextOverflow.ellipsis)
+                          SelectableText(labelObj)
                       ],
                     ),
                   ),
-              ],
+                  if(labelTextLan != "")
+                    Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.language),
+                          if(labelTextLan == "*")
+                            const CircularProgressIndicator()
+                          else
+                            SelectableText(labelTextLan)
+                        ],
+                      ),
+                    ),
+                  if(labelText != "")
+                    Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.text_fields),
+                            if(labelText == "*")
+                              const CircularProgressIndicator()
+                            else
+                              SelectableText(labelText)
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
         )
